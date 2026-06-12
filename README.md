@@ -1,27 +1,43 @@
-# App
+# TEA-Yudo
 
-This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 17.3.17.
+TEA-Yudo es una aplicacion para gestionar fichas PDF de estudiantes, asociarlas a cursos y profesores, y revisar informacion relevante como diagnosticos, ajustes razonables, historial y graficos generales.
 
-## Development server
+## Primer uso
 
-Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
+1. Inicia la aplicacion y entra desde la pantalla de inicio de sesion.
+2. Usa una de las cuentas locales de prueba:
+   - Administradora: `tutora` / `123456`
+   - Docente: `docente` / `123456`
+3. Si entras como administradora, comienza creando la estructura basica desde `Opciones`:
+   - Agrega profesores.
+   - Agrega cursos.
+   - Asocia cada curso con su profesor correspondiente.
+4. Luego sube una o varias fichas PDF desde `Opciones > Agregar ficha` o desde la pantalla `Cargar Ficha`.
+5. Revisa las fichas desde `Visualizar Fichas`. Puedes entrar por profesor, curso o estudiante para ver los datos extraidos del PDF.
+6. Si una ficha corresponde a un estudiante que cursa varias asignaturas, usa `Asociar cursos` para vincularlo con los cursos necesarios.
+7. Consulta los graficos generales para ver resumenes por curso, diagnostico y categorias de ajustes.
 
-## Code scaffolding
+## Roles disponibles
 
-Run `ng generate component component-name` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module`.
+La cuenta administradora puede registrar profesores, crear cursos, asociar profesores con cursos, subir fichas, editar fichas, revisar registros de correos y desafiliar profesores.
 
-## Build
+La cuenta docente puede revisar las fichas y cursos asociados a su usuario, pero no puede administrar la estructura general del sistema.
 
-Run `ng build` to build the project. The build artifacts will be stored in the `dist/` directory.
+## Recomendaciones
 
-## Running unit tests
+- Sube solamente archivos PDF.
+- Crea al menos un curso antes de intentar cargar fichas.
+- Registra profesores antes de asociarlos a cursos.
+- Manten las fichas actualizadas usando la opcion `Editar` cuando necesites cambiar metadatos o agregar nuevos PDF.
+- Usa `Cerrar sesion` al terminar, especialmente si compartes el equipo.
 
-Run `ng test` to execute the unit tests via [Karma](https://karma-runner.github.io).
+## Ejecutar en desarrollo
 
-## Running end-to-end tests
+Instala las dependencias y levanta el servidor de desarrollo:
 
-Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To use this command, you need to first add a package that implements end-to-end testing capabilities.
+```bash
+npm install
+npm start
+```
 
-## Further help
-
-To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI Overview and Command Reference](https://angular.io/cli) page.
+Luego abre `http://localhost:4200/` en el navegador.
