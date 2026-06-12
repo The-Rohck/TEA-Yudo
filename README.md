@@ -6,7 +6,7 @@ TEA-Yudo es una aplicacion para gestionar fichas PDF de estudiantes, asociarlas 
 
 1. Inicia la aplicacion y entra desde la pantalla de inicio de sesion.
 2. Usa una de las cuentas locales de prueba:
-   - Administradora: `tutora` / `123456`
+   - Administradora: `Karla Carreño` / `123456`
    - Docente: `docente` / `123456`
 3. Si entras como administradora, comienza creando la estructura basica desde `Opciones`:
    - Agrega profesores.
