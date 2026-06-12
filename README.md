@@ -23,6 +23,7 @@ La cuenta administradora puede registrar profesores, crear cursos, asociar profe
 
 La cuenta docente puede revisar las fichas y cursos asociados a su usuario, pero no puede administrar la estructura general del sistema.
 
+
 ## Recomendaciones
 
 - Sube solamente archivos PDF.
@@ -41,3 +42,15 @@ npm start
 ```
 
 Luego abre `http://localhost:4200/` en el navegador.
+
+## Base de datos
+
+Este proyecto usa MySQL/MariaDB mediante XAMPP.
+
+1. Abrir XAMPP e iniciar Apache y MySQL.
+2. Entrar a phpMyAdmin.
+3. Crear una base de datos llamada `tea_yudo`.
+4. Importar el archivo:
+
+```text
+database/tea_yudo.sql
