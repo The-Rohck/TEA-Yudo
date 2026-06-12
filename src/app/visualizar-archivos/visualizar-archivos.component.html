@@ -1,0 +1,824 @@
+<!-- Panel principal para listar cursos, docentes, estudiantes, fichas y metricas. -->
+<div class="container">
+  <!-- Encabezado con identidad, usuario activo y menu de acciones globales. -->
+  <header class="header">
+    <div class="header-brand">
+      <img src="../../assets/imagenes/LogoEscuela.png" alt="Logo PUCV" class="dashboard-logo" />
+      <div>
+        <h1>TEA-Yudo</h1>
+        <p *ngIf="currentUser" class="user-info">
+          Usuario: {{ currentUser.username }} - Rol: {{ currentUser.role }}
+        </p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="options-button" (click)="toggleOptionsMenu()" type="button">
+        Opciones
+      </button>
+
+      <div *ngIf="isOptionsMenuOpen" class="options-menu">
+        <button class="menu-button" (click)="openProfileModal()">Editar perfil</button>
+        <button *ngIf="canUploadFicha" class="menu-button" (click)="openAddTeacherModal()">Anadir profesor</button>
+        <button *ngIf="canUploadFicha" class="menu-button" (click)="openAddCourseModal()">Anadir curso</button>
+        <button *ngIf="canUploadFicha" class="menu-button" (click)="openManageAllCourseTeachersModal()">Gestionar cursos y profesores</button>
+        <button *ngIf="canUploadFicha" class="menu-button" (click)="openUploadModal()">Agregar ficha</button>
+        <button *ngIf="canUploadFicha" class="menu-button" (click)="openEmailNotificationsModal()">Registro de correos</button>
+        <button *ngIf="canUploadFicha" class="menu-button danger" (click)="openManageTeachersModal()">Desafiliar profesor</button>
+        <button class="menu-button danger" (click)="cerrarSesion()">Cerrar sesion</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Resumen rapido de los datos que el usuario tiene permiso para ver. -->
+  <section class="summary">
+    <strong>Total de profesores:</strong> {{ registeredTeachers.length }}
+    <span> | </span>
+    <strong>Total de cursos:</strong> {{ courses.length }}
+    <ng-container *ngIf="canUploadFicha">
+      <span> | </span>
+      <strong>Estudiantes con ficha:</strong> {{ studentsWithFicha.length }}
+    </ng-container>
+  </section>
+
+  <section *ngIf="isInitializing" class="file-section">
+    <p class="loading-message">Cargando datos del sistema...</p>
+  </section>
+
+  <section *ngIf="apiStatusMessage" class="file-section">
+    <p class="error-message">{{ apiStatusMessage }}</p>
+  </section>
+
+  <section
+    *ngIf="canUploadFicha && !isInitializing && !selectedTeacher && !isViewingUnassignedCourses && !selectedCourse"
+    class="file-section"
+  >
+    <div class="detail-header">
+      <div>
+        <h2>Estudiantes con ficha subida</h2>
+        <p>Vista general de estudiantes registrados mediante sus PDF.</p>
+      </div>
+      <strong class="student-total">{{ filteredStudentsWithFicha.length }} estudiante(s)</strong>
+    </div>
+
+    <div class="student-category-tabs" role="group" aria-label="Categorias de estudiantes">
+      <button
+        type="button"
+        [class.active]="studentCategoryFilter === 'todos'"
+        (click)="setStudentCategoryFilter('todos')"
+      >
+        Todos ({{ studentsWithFicha.length }})
+      </button>
+      <button
+        type="button"
+        [class.active]="studentCategoryFilter === 'con-cursos'"
+        (click)="setStudentCategoryFilter('con-cursos')"
+      >
+        Con asignaturas ({{ studentsWithCoursesCount }})
+      </button>
+      <button
+        type="button"
+        [class.active]="studentCategoryFilter === 'sin-asignaturas'"
+        (click)="setStudentCategoryFilter('sin-asignaturas')"
+      >
+        Ya no cursan asignaturas ({{ studentsWithoutCoursesCount }})
+      </button>
+    </div>
+
+    <p *ngIf="isProcessingCharts" class="loading-message">
+      Leyendo fichas para identificar estudiantes...
+    </p>
+
+    <p *ngIf="!isProcessingCharts && filteredStudentsWithFicha.length === 0" class="empty-message">
+      {{ studentsWithFicha.length === 0 ? 'Aun no hay estudiantes con ficha subida.' : 'No hay estudiantes en esta categoria.' }}
+    </p>
+
+    <ul *ngIf="filteredStudentsWithFicha.length > 0" class="student-list">
+      <li *ngFor="let student of filteredStudentsWithFicha" class="student-card">
+        <div class="student-info">
+          <strong>{{ student.nombre }}</strong>
+          <span>RUT: {{ student.rut }}</span>
+          <span>Carrera: {{ student.carrera }}</span>
+          <span>
+            Asignaturas:
+            <strong
+              class="student-course-status"
+              [class.no-courses]="!hasStudentCourses(student)"
+            >
+              {{ getStudentCoursesDisplay(student) }}
+            </strong>
+          </span>
+          <small>{{ student.files.length }} ficha(s) subida(s)</small>
+          <button
+            type="button"
+            class="student-course-button"
+            [disabled]="!canManageStudentCourses(student)"
+            (click)="openManageStudentCoursesModal(student)"
+          >
+            Asociar cursos
+          </button>
+          <small *ngIf="!canManageStudentCourses(student)">
+            La ficha debe incluir el RUT para asociar cursos.
+          </small>
+        </div>
+
+        <ul class="student-file-list">
+          <li *ngFor="let file of student.files">
+            <div>
+              <strong>{{ file.name }}</strong>
+              <small>
+                {{ getFileCurrentCoursesDisplay(file) }} -
+                {{ file.date || 'Sin fecha' }}
+              </small>
+            </div>
+            <button type="button" (click)="viewFile(file)">Ver ficha</button>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </section>
+
+  <section *ngIf="!isInitializing && !selectedTeacher && !isViewingUnassignedCourses && !selectedCourse" class="file-section">
+    <!-- Primer nivel: seleccion de profesor o cursos sin asignar. -->
+    <h2>Profesores</h2>
+
+    <div *ngIf="visibleTeachers.length === 0" class="empty-message">
+      <p *ngIf="canUploadFicha">No hay profesores registrados aun.</p>
+      <p *ngIf="!canUploadFicha">Tu usuario no tiene cursos asociados.</p>
+      <button *ngIf="canUploadFicha" class="add-button" (click)="openAddTeacherModal()">Agregar profesor</button>
+      <p *ngIf="!canUploadFicha">Solo la tutora administradora puede agregar profesores.</p>
+    </div>
+
+    <ul *ngIf="visibleTeachers.length > 0" class="teacher-list">
+      <li *ngFor="let teacher of visibleTeachers">
+        <div class="teacher-list-item">
+          <button class="teacher-card" (click)="selectTeacher(teacher)">
+            <strong>{{ teacher.fullName }}</strong>
+            <span>{{ teacher.mail }}</span>
+            <small>{{ getTeacherCoursesCount(teacher) }} curso(s)</small>
+          </button>
+
+          <button
+            *ngIf="canUploadFicha"
+            type="button"
+            class="disaffiliate-teacher-button"
+            [disabled]="isDisaffiliatingTeacher(teacher)"
+            (click)="disaffiliateTeacher(teacher, $event)"
+          >
+            {{ isDisaffiliatingTeacher(teacher) ? 'Desafiliando...' : 'Desafiliar' }}
+          </button>
+        </div>
+      </li>
+    </ul>
+
+    <button *ngIf="unassignedCourses.length > 0" class="unassigned-button" (click)="selectUnassignedCourses()">
+      <strong>Cursos sin profesor asignado</strong>
+      <small>{{ unassignedCourses.length }} curso(s)</small>
+    </button>
+  </section>
+
+  <section *ngIf="(selectedTeacher || isViewingUnassignedCourses) && !selectedCourse" class="file-section">
+    <!-- Segundo nivel: cursos del profesor seleccionado. -->
+    <div class="detail-header">
+      <div>
+        <h2>{{ getSelectedTeacherTitle() }}</h2>
+        <p>{{ getSelectedTeacherSubtitle() }}</p>
+      </div>
+      <div class="detail-actions">
+        <button
+          *ngIf="canUploadFicha && selectedTeacher"
+          class="course-teacher-button"
+          (click)="openManageTeacherCoursesModal(selectedTeacher)"
+        >
+          Asociar curso
+        </button>
+        <button
+          *ngIf="canUploadFicha && selectedTeacher"
+          type="button"
+          class="disaffiliate-teacher-button"
+          [disabled]="isDisaffiliatingTeacher(selectedTeacher)"
+          (click)="disaffiliateTeacher(selectedTeacher, $event)"
+        >
+          {{ isDisaffiliatingTeacher(selectedTeacher) ? 'Desafiliando...' : 'Desafiliar' }}
+        </button>
+        <button class="secondary-button" (click)="backToTeachers()">Volver a profesores</button>
+      </div>
+    </div>
+
+    <div *ngIf="visibleTeacherCourses.length === 0" class="empty-message">
+      <p>No hay cursos asociados.</p>
+      <div *ngIf="canUploadFicha" class="empty-actions">
+        <button *ngIf="selectedTeacher" class="add-button" (click)="openManageTeacherCoursesModal(selectedTeacher)">Asociar curso existente</button>
+        <button *ngIf="isViewingUnassignedCourses" class="add-button" (click)="openManageAllCourseTeachersModal()">Gestionar asociaciones</button>
+        <button class="secondary-button" (click)="openAddCourseModal()">Crear curso nuevo</button>
+      </div>
+    </div>
+
+    <ul *ngIf="visibleTeacherCourses.length > 0" class="course-list">
+      <li *ngFor="let course of visibleTeacherCourses">
+        <div class="course-item">
+          <button class="course-button" (click)="selectCourse(course)">
+            <strong>{{ course }}</strong>
+            <small>{{ getTeacherDisplayForCourse(course) }}</small>
+            <small>{{ filesByCourse(course).length }} ficha(s)</small>
+          </button>
+
+          <button
+            *ngIf="canUploadFicha"
+            class="course-teacher-button"
+            (click)="openManageCourseTeacherModal(course, $event)"
+          >
+            Profesor
+          </button>
+
+          <button
+            *ngIf="canUploadFicha && selectedTeacher"
+            class="course-action-button"
+            (click)="openUploadModal(course, $event)"
+          >
+            Agregar ficha
+          </button>
+
+          <button
+            *ngIf="canDeleteCourse(course)"
+            class="delete-course-button"
+            (click)="deleteCourse(course, $event)"
+          >
+            Eliminar
+          </button>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <section *ngIf="selectedCourse" class="file-section">
+    <!-- Tercer nivel: fichas pertenecientes al curso seleccionado. -->
+    <div class="detail-header">
+      <div>
+        <h2>{{ selectedCourse }}</h2>
+        <p>Fichas asociadas al curso</p>
+      </div>
+      <div class="detail-actions">
+        <button *ngIf="canUploadFicha && selectedTeacher" (click)="openUploadModal(selectedCourse)">
+          Agregar ficha
+        </button>
+        <button class="secondary-button" (click)="backToCourses()">Volver a cursos del profesor</button>
+      </div>
+    </div>
+
+    <ul class="file-list">
+      <li *ngFor="let file of selectedCourseFiles">
+        <span>
+          <strong>{{ file.name }}</strong>
+          <small *ngIf="hasRealCourse(file.course)">Curso: {{ file.course }}</small>
+          <small>Fecha: {{ file.date || 'Sin fecha' }}</small>
+        </span>
+        <div class="file-actions">
+          <button (click)="viewFile(file)">Ver</button>
+          <button *ngIf="canUploadFicha" (click)="openEditFichaModal(file)" class="edit-button">Editar</button>
+          <button (click)="downloadFile(file)" class="secondary-button">Descargar</button>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <section *ngIf="selectedFile" id="ficha-detail" class="detail-section">
+    <!-- Visor de ficha: muestra los datos extraidos del PDF y su historial. -->
+    <div class="detail-header">
+      <h2>{{ selectedFile.name }}</h2>
+      <button (click)="closeViewer()" class="secondary-button">Cerrar</button>
+    </div>
+
+    <p *ngIf="isLoading" class="loading-message">Cargando informacion...</p>
+
+    <div *ngIf="!isLoading && extractedData" class="detail-card fop-card">
+      <div class="fop-grid">
+        <div class="fop-field">
+          <strong>Nombre</strong>
+          <span>{{ extractedData.nombre || 'No informado' }}</span>
+        </div>
+
+        <div class="fop-field">
+          <strong>RUT</strong>
+          <span>{{ extractedData.rut || 'No informado' }}</span>
+        </div>
+
+        <div class="fop-field">
+          <strong>Carrera</strong>
+          <span>{{ extractedData.carrera || 'No informada' }}</span>
+        </div>
+
+        <div class="fop-field">
+          <strong>Ano Ingreso</strong>
+          <span>{{ extractedData.fechaIngreso || extractedData.anoIngreso || 'No informado' }}</span>
+        </div>
+      </div>
+
+      <div class="fop-meta">
+        <span><strong>Curso:</strong> {{ selectedFile.course || 'Sin curso' }}</span>
+        <span><strong>Ultima Actualizacion:</strong> {{ getSystemUpdateDate(selectedFile) }}</span>
+      </div>
+
+      <div class="fop-block fop-empty-block">
+        <h3>Antecedentes Educacion Superior</h3>
+      </div>
+
+      <div class="fop-block">
+        <h3>Diagnostico</h3>
+        <p>{{ extractedData.diagnosticoEspecificaciones || 'Sin diagnostico registrado.' }}</p>
+      </div>
+
+      <div class="fop-block">
+        <h3>Especificaciones del Diagnostico</h3>
+        <p *ngIf="extractedData.antecedentesEducacionSuperior" class="fop-context">
+          {{ extractedData.antecedentesEducacionSuperior }}
+        </p>
+      </div>
+
+      <div class="fop-block">
+        <h3>Ajustes Razonables</h3>
+
+        <div *ngIf="extractedData.ajustesRazonables.length > 0; else emptyAjustes" class="fop-adjustments">
+          <article *ngFor="let ajuste of extractedData.ajustesRazonables">
+            <h4>{{ getAjusteDisplayName(ajuste.criterio) }}</h4>
+            <ul>
+              <li *ngFor="let estrategia of ajuste.estrategias">{{ estrategia }}</li>
+            </ul>
+          </article>
+        </div>
+
+        <ng-template #emptyAjustes>
+          <p>Sin ajustes registrados.</p>
+        </ng-template>
+      </div>
+
+      <div *ngIf="extractedData.observaciones" class="fop-block">
+        <h3>Observaciones</h3>
+        <p>{{ extractedData.observaciones }}</p>
+      </div>
+
+      <div *ngIf="extractedData.contacto" class="fop-block">
+        <h3>Contacto</h3>
+        <p>{{ extractedData.contacto }}</p>
+      </div>
+
+      <div class="history-block">
+        <h3>Historial de actualizaciones</h3>
+
+        <ul *ngIf="getVisibleFileHistory(selectedFile).length > 0; else emptyHistory">
+          <li *ngFor="let item of getVisibleFileHistory(selectedFile)">
+            <strong>{{ item.action }}</strong>
+            <span>{{ formatHistoryDate(item.date) }}</span>
+            <p>{{ item.description }}</p>
+          </li>
+        </ul>
+
+        <button
+          *ngIf="getHiddenHistoryCount(selectedFile) > 0"
+          class="secondary-button history-toggle-button"
+          type="button"
+          (click)="toggleFullHistory()"
+        >
+          {{ showFullHistory ? 'Ocultar actualizaciones anteriores' : 'Ver actualizaciones anteriores (' + getHiddenHistoryCount(selectedFile) + ')' }}
+        </button>
+
+        <ng-template #emptyHistory>
+          <p>Esta ficha aun no tiene historial registrado.</p>
+        </ng-template>
+      </div>
+    </div>
+
+    <p *ngIf="!isLoading && !extractedData && pdfReadError" class="error-message">
+      {{ pdfReadError }}
+    </p>
+  </section>
+
+  <section class="charts-section">
+    <!-- Graficos calculados desde el texto extraido de las fichas visibles. -->
+    <h2>Graficos generales</h2>
+
+    <div class="chart-cards">
+      <article>
+        <strong>{{ courses.length }}</strong>
+        <span>Cursos registrados</span>
+      </article>
+      <article>
+        <strong>{{ files.length }}</strong>
+        <span>Fichas registradas</span>
+      </article>
+      <article>
+        <strong>{{ mostLoadedCourse }}</strong>
+        <span>Curso con mas fichas</span>
+      </article>
+    </div>
+
+    <div *ngIf="courseStats.length > 0" class="bar-chart">
+      <h3>Fichas por curso</h3>
+
+      <div *ngFor="let course of courseStats" class="bar-row">
+        <div class="bar-info">
+          <strong>{{ course.name }}</strong>
+          <span>{{ course.count }} ficha(s) - {{ course.percent }}%</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" [style.width]="getBarWidth(course.count)"></div>
+        </div>
+      </div>
+    </div>
+
+    <p *ngIf="isProcessingCharts" class="loading-message">
+      Leyendo informacion de fichas para generar graficos...
+    </p>
+
+    <div *ngIf="diagnosticoStats.length > 0" class="bar-chart">
+      <h3>Fichas por diagnostico</h3>
+
+      <div *ngFor="let item of diagnosticoStats" class="bar-row">
+        <div class="bar-info">
+          <strong>{{ item.name }}</strong>
+          <span>{{ item.count }} ficha(s) - {{ item.percent }}%</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill bar-fill-green" [style.width]="getCustomBarWidth(item.count, maxDiagnosticoCount)"></div>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="ajustesStats.length > 0" class="bar-chart">
+      <h3>Ajustes por categoria</h3>
+
+      <div *ngFor="let item of ajustesStats" class="bar-row">
+        <div class="bar-info">
+          <strong>{{ item.name }}</strong>
+          <span>{{ item.count }} ajuste(s)</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill bar-fill-orange" [style.width]="getCustomBarWidth(item.count, maxAjustesCount)"></div>
+        </div>
+      </div>
+    </div>
+
+    <p *ngIf="courseStats.length === 0" class="empty-message">
+      Aun no hay datos para generar graficos.
+    </p>
+  </section>
+
+  <div *ngIf="isUploadModalOpen" class="modal-background" (click)="closeUploadModal()">
+    <!-- Modal para carga masiva de PDF en un curso existente. -->
+    <section class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Subir ficha PDF</h2>
+        <button class="secondary-button" (click)="closeUploadModal()">Cerrar</button>
+      </div>
+
+      <p>Selecciona uno o varios archivos PDF para agregarlos a la lista.</p>
+
+      <label for="courseInput">Curso asociado</label>
+      <select
+        id="courseInput"
+        [value]="uploadCourse"
+        (change)="uploadCourse = $any($event.target).value"
+      >
+        <option value="" disabled>Selecciona un curso</option>
+        <option *ngFor="let course of courses" [value]="course">{{ course }}</option>
+      </select>
+
+      <p *ngIf="courses.length === 0" class="empty-message">
+        Primero agrega un curso desde Opciones.
+      </p>
+
+      <input
+        type="file"
+        accept="application/pdf,.pdf"
+        multiple
+        (change)="onUploadFilesSelected($event)"
+      />
+
+      <div *ngIf="selectedUploadFiles.length > 0" class="selected-files">
+        <h3>Archivos seleccionados</h3>
+        <ul>
+          <li *ngFor="let file of selectedUploadFiles">{{ file.name }}</li>
+        </ul>
+      </div>
+
+      <button (click)="uploadSelectedFiles()" [disabled]="selectedUploadFiles.length === 0 || !uploadCourse.trim()">
+        Subir archivo(s)
+      </button>
+
+      <p *ngIf="uploadMessage" class="loading-message">{{ uploadMessage }}</p>
+    </section>
+  </div>
+
+  <div *ngIf="isProfileModalOpen" class="modal-background" (click)="closeProfileModal()">
+    <!-- Modal para actualizar las credenciales guardadas localmente. -->
+    <section class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Editar perfil</h2>
+        <button class="secondary-button" (click)="closeProfileModal()">Cerrar</button>
+      </div>
+
+      <label for="profileUsername">Nombre</label>
+      <input
+        id="profileUsername"
+        type="text"
+        placeholder="Nombre"
+        [value]="profileUsername"
+        (input)="profileUsername = $any($event.target).value"
+      />
+
+      <label for="profilePassword">Contrasena</label>
+      <input
+        id="profilePassword"
+        type="password"
+        placeholder="Minimo 6 caracteres"
+        [value]="profilePassword"
+        (input)="profilePassword = $any($event.target).value"
+      />
+
+      <button (click)="saveProfile()">Guardar cambios</button>
+
+      <p *ngIf="profileMessage" class="loading-message">{{ profileMessage }}</p>
+    </section>
+  </div>
+
+  <div *ngIf="isEmailNotificationsModalOpen" class="modal-background" (click)="closeEmailNotificationsModal()">
+    <section class="modal-card email-log-modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Registro de correos</h2>
+        <button class="secondary-button" (click)="closeEmailNotificationsModal()">Cerrar</button>
+      </div>
+
+      <p *ngIf="emailNotificationsMessage" class="loading-message">{{ emailNotificationsMessage }}</p>
+
+      <div *ngIf="emailNotifications.length > 0" class="email-log-list">
+        <article *ngFor="let notification of emailNotifications" class="email-log-item">
+          <strong>{{ notification.estado }}</strong>
+          <span>Fecha: {{ notification.fecha | date:'dd-MM-yyyy HH:mm' }}</span>
+          <span>Curso: {{ notification.curso }}</span>
+          <span>Remitente: {{ notification.remitente }}</span>
+          <span>Destinatario: {{ notification.destinatario || 'Sin destinatario' }}</span>
+          <small *ngIf="notification.detalle">{{ notification.detalle }}</small>
+        </article>
+      </div>
+    </section>
+  </div>
+
+  <div *ngIf="isEditFichaModalOpen" class="modal-background" (click)="closeEditFichaModal()">
+    <!-- Modal para cambiar metadatos de una ficha y anexar nuevos PDF. -->
+    <section class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Editar ficha</h2>
+        <button class="secondary-button" (click)="closeEditFichaModal()">Cerrar</button>
+      </div>
+
+      <label for="editingFichaName">Nombre de la ficha</label>
+      <input
+        id="editingFichaName"
+        type="text"
+        placeholder="Nombre del archivo"
+        [value]="editingFichaName"
+        (input)="editingFichaName = $any($event.target).value"
+      />
+
+      <label for="editingFichaCourse">Curso asociado</label>
+      <select
+        id="editingFichaCourse"
+        [value]="editingFichaCourse"
+        (change)="editingFichaCourse = $any($event.target).value"
+      >
+        <option value="" disabled>Selecciona un curso</option>
+        <option *ngFor="let course of courses" [value]="course">{{ course }}</option>
+      </select>
+
+      <label for="editingFichaDate">Fecha de la ficha</label>
+      <input
+        id="editingFichaDate"
+        type="date"
+        [value]="editingFichaDate"
+        (input)="editingFichaDate = $any($event.target).value"
+      />
+
+      <label for="editingFichaFiles">Agregar nuevos PDF</label>
+      <input
+        id="editingFichaFiles"
+        type="file"
+        accept="application/pdf,.pdf"
+        multiple
+        (change)="onEditFichaFilesSelected($event)"
+      />
+
+      <div *ngIf="editingFichaFiles.length > 0" class="selected-files">
+        <h3>PDF para agregar</h3>
+        <ul>
+          <li *ngFor="let file of editingFichaFiles">{{ file.name }}</li>
+        </ul>
+      </div>
+
+      <button (click)="saveEditedFicha()">Guardar ficha</button>
+
+      <p *ngIf="editingFichaMessage" class="loading-message">{{ editingFichaMessage }}</p>
+    </section>
+  </div>
+
+  <div *ngIf="isAddTeacherModalOpen" class="modal-background" (click)="closeAddTeacherModal()">
+    <!-- Modal administrativo para registrar docentes. -->
+    <section class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Gestionar profesores</h2>
+        <button class="secondary-button" (click)="closeAddTeacherModal()">Cerrar</button>
+      </div>
+
+      <h3 class="modal-section-title">Registrar profesor</h3>
+
+      <label for="teacherFullName">Nombre completo</label>
+      <input
+        id="teacherFullName"
+        type="text"
+        placeholder="Nombre y apellido"
+        [value]="teacherFullName"
+        (input)="teacherFullName = $any($event.target).value"
+      />
+
+      <label for="teacherRut">RUT (opcional)</label>
+      <input
+        id="teacherRut"
+        type="text"
+        placeholder="12.345.678-9"
+        [value]="teacherRut"
+        (input)="teacherRut = $any($event.target).value"
+      />
+
+      <label for="teacherMail">Mail</label>
+      <input
+        id="teacherMail"
+        type="email"
+        placeholder="profesor@correo.cl"
+        [value]="teacherMail"
+        (input)="teacherMail = $any($event.target).value"
+      />
+
+      <button (click)="addTeacher()">Guardar profesor</button>
+
+      <p *ngIf="teacherMessage" class="loading-message">{{ teacherMessage }}</p>
+
+      <div class="registered-teachers">
+        <h3>Profesores registrados</h3>
+
+        <p *ngIf="registeredTeachers.length === 0" class="empty-message">
+          Aun no hay profesores registrados.
+        </p>
+
+        <ul *ngIf="registeredTeachers.length > 0">
+          <li *ngFor="let teacher of registeredTeachers">
+            <div>
+              <strong>{{ teacher.fullName }}</strong>
+              <span>{{ isGeneratedTeacherRut(teacher.rut) ? 'Sin RUT' : teacher.rut }}</span>
+              <span>{{ teacher.mail }}</span>
+            </div>
+
+            <button
+              type="button"
+              class="disaffiliate-teacher-button"
+              [disabled]="isDisaffiliatingTeacher(teacher)"
+              (click)="disaffiliateTeacher(teacher, $event)"
+            >
+              {{ isDisaffiliatingTeacher(teacher) ? 'Desafiliando...' : 'Desafiliar' }}
+            </button>
+          </li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <div *ngIf="isAddCourseModalOpen" class="modal-background" (click)="closeAddCourseModal()">
+    <!-- Modal administrativo para crear cursos y asignar profesor inicial. -->
+    <section class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Anadir curso</h2>
+        <button class="secondary-button" (click)="closeAddCourseModal()">Cerrar</button>
+      </div>
+
+      <label for="newCourseId">Codigo/ID del curso (opcional)</label>
+      <input
+        id="newCourseId"
+        type="text"
+        maxlength="10"
+        placeholder="Ejemplo: MAT101"
+        [value]="newCourseId"
+        (input)="newCourseId = $any($event.target).value"
+      />
+
+      <label for="newCourseName">Nombre del curso</label>
+      <input
+        id="newCourseName"
+        type="text"
+        placeholder="Ejemplo: Matematica 1"
+        [value]="newCourseName"
+        (input)="newCourseName = $any($event.target).value"
+      />
+
+      <label for="newCourseTeacher">Profesor asociado</label>
+      <select
+        id="newCourseTeacher"
+        [value]="newCourseTeacherRut"
+        (change)="newCourseTeacherRut = $any($event.target).value"
+      >
+        <option value="">Sin profesor asignado</option>
+        <option *ngFor="let teacher of registeredTeachers" [value]="teacher.rut">{{ teacher.fullName }}</option>
+      </select>
+
+      <button (click)="addCourse()">Guardar curso</button>
+
+      <p *ngIf="courseMessage" class="loading-message">{{ courseMessage }}</p>
+    </section>
+  </div>
+
+  <div *ngIf="isManageCourseTeacherModalOpen" class="modal-background" (click)="closeManageCourseTeacherModal()">
+    <!-- Modal para vincular o desvincular profesores de cursos existentes. -->
+    <section class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Gestionar profesor del curso</h2>
+        <button class="secondary-button" (click)="closeManageCourseTeacherModal()">Cerrar</button>
+      </div>
+
+      <label for="associationCourse">Curso</label>
+      <select
+        id="associationCourse"
+        [value]="selectedAssociationCourse"
+        (change)="onAssociationCourseChange($any($event.target).value)"
+      >
+        <option value="" disabled>Selecciona un curso</option>
+        <option *ngFor="let course of allCourses" [value]="course">{{ course }}</option>
+      </select>
+
+      <label for="associationTeacher">Profesor asociado</label>
+      <select
+        id="associationTeacher"
+        [value]="selectedAssociationTeacherRut"
+        (change)="selectedAssociationTeacherRut = $any($event.target).value"
+      >
+        <option value="">Sin profesor asignado</option>
+        <option *ngFor="let teacher of registeredTeachers" [value]="teacher.rut">{{ teacher.fullName }}</option>
+      </select>
+
+      <div class="modal-actions">
+        <button (click)="saveCourseTeacherAssociation()" [disabled]="!selectedAssociationCourse">
+          Guardar asociacion
+        </button>
+
+        <button
+          class="secondary-button"
+          (click)="unlinkCourseTeacherAssociation()"
+          [disabled]="!selectedAssociationCourse || !getTeacherForCourse(selectedAssociationCourse)"
+        >
+          Desvincular profesor
+        </button>
+      </div>
+
+      <p *ngIf="associationMessage" class="loading-message">{{ associationMessage }}</p>
+    </section>
+  </div>
+
+  <div *ngIf="isManageStudentCoursesModalOpen" class="modal-background" (click)="closeManageStudentCoursesModal()">
+    <!-- Modal para vincular un estudiante con una o varias asignaturas. -->
+    <section class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div>
+          <h2>Asociar cursos</h2>
+          <p>{{ selectedStudentForCourses?.nombre }}</p>
+        </div>
+        <button class="secondary-button" (click)="closeManageStudentCoursesModal()">Cerrar</button>
+      </div>
+
+      <p *ngIf="allCourses.length === 0" class="empty-message">
+        Primero agrega cursos desde Opciones.
+      </p>
+
+      <div *ngIf="allCourses.length > 0" class="checkbox-list">
+        <label *ngFor="let course of allCourses">
+          <input
+            type="checkbox"
+            [checked]="isStudentCourseSelected(course)"
+            (change)="toggleStudentCourse(course, $any($event.target).checked)"
+          />
+          <span>{{ course }}</span>
+        </label>
+      </div>
+
+      <button
+        type="button"
+        class="secondary-button"
+        (click)="clearSelectedStudentCourses()"
+        [disabled]="!selectedStudentForCourses || selectedStudentCourses.length === 0"
+      >
+        Marcar sin asignaturas
+      </button>
+
+      <button (click)="saveStudentCourses()" [disabled]="!selectedStudentForCourses">
+        Guardar cursos
+      </button>
+
+      <p *ngIf="studentCourseMessage" class="loading-message">{{ studentCourseMessage }}</p>
+    </section>
+  </div>
+</div>

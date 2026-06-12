@@ -1,0 +1,44 @@
+/* Layout centrado de la pantalla de acciones iniciales. */
+.div {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+}
+
+.container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+}
+
+.logo {
+  width: 200px;
+  margin-bottom: 24px;
+}
+
+.btn {
+  width: 220px;
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.iniciarSesion_boton {
+  background-color: #1d71b8;
+  color: white;
+}
+
+.registrarse_boton {
+  background-color: #24588d;
+  color: white;
+}
+
+.Titulo{
+  font-size: medium;
+  text-align: center;  
+}

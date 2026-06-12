@@ -1,0 +1,55 @@
+<!-- Formulario de acceso principal para tutora y docentes. -->
+<div class="container-fluid login-container">
+  <form [formGroup]="loginForm" (ngSubmit)="iniciarSesion()">
+    <img src="../../assets/imagenes/LogoEscuela.png" alt="Logo" class="logo Centrar" />
+    <h2>Bienvenido a TEA-YUDO</h2>
+
+    <input
+      type="text"
+      placeholder="Usuario"
+      formControlName="username"
+    />
+
+    <div
+      class="error-message"
+      *ngIf="loginForm.get('username')?.touched && loginForm.get('username')?.invalid"
+    >
+      Ingresa tu usuario
+    </div>
+
+    <input
+      type="password"
+      placeholder="Contrasena"
+      formControlName="password"
+    />
+
+    <div
+      class="error-message"
+      *ngIf="
+        loginForm.get('password')?.touched && loginForm.get('password')?.invalid
+      "
+    >
+      Minimo 6 caracteres
+    </div>
+
+    <div *ngIf="loginError" class="error-message">
+      {{ loginError }}
+    </div>
+
+    <div class="users-help">
+      <p>Usuarios de prueba:</p>
+      <p><strong>tutora</strong> / 123456</p>
+      <p><strong>docente</strong> / 123456</p>
+    </div>
+
+    <button class="btn" type="submit" [disabled]="isLoggingIn">
+      {{ isLoggingIn ? 'Cargando...' : 'Iniciar Sesion' }}
+    </button>
+
+    <p *ngIf="isLoggingIn" class="loading-message">
+      Entrando a visualizar fichas...
+    </p>
+
+    <a routerLink="/restablecer-contrasena" class="Centrar">Restablecer Contrasena</a>
+  </form>
+</div>

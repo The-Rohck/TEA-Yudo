@@ -1,13 +1,36 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <!-- Documento HTML base donde Angular monta la aplicacion completa. -->
+  <!-- Especifica la codificación de caracteres -->
   <meta charset="utf-8">
-  <title>App</title>
+  
+  <!-- Título de la pestaña del navegador -->
+  <title>TEA-Yudo</title>
+  
+  <!-- Base URL para las rutas relativas de la aplicación -->
   <base href="/">
+  
+  <!-- Configuración de viewport para responsive design -->
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  
+  <!-- Ícono que aparece en la pestaña del navegador -->
+  <link rel="icon" type="image" href="/app/src/IconoU.png">
 </head>
 <body>
+  <!--
+    <app-root>: Elemento raíz de Angular
+    
+    Aquí es donde se monta la aplicación Angular.
+    Angular reemplaza este elemento con el contenido del AppComponent.
+    
+    Flujo:
+    1. El navegador carga este HTML
+    2. Angular se inicia (main.ts)
+    3. Angular carga AppComponent
+    4. AppComponent se renderiza dentro de <app-root>
+    5. El <router-outlet> dentro de AppComponent muestra los componentes según la ruta
+  -->
   <app-root></app-root>
 </body>
 </html>

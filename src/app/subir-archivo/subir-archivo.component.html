@@ -1,0 +1,43 @@
+<!-- Formulario independiente para subir una o varias fichas PDF a un curso. -->
+<div class="container">
+  <section class="card">
+    <h1>Cargar ficha</h1>
+    <p>Selecciona uno o varios archivos PDF para subirlos al sistema.</p>
+
+    <label for="courseName">Curso asociado</label>
+    <select
+      id="courseName"
+      [value]="courseName"
+      (change)="courseName = $any($event.target).value"
+    >
+      <option value="" disabled>Selecciona un curso</option>
+      <option *ngFor="let course of courses" [value]="course">{{ course }}</option>
+    </select>
+
+    <p *ngIf="courses.length === 0" class="empty-message">
+      Primero agrega un curso desde la pantalla de visualizacion.
+    </p>
+
+    <input
+      type="file"
+      accept="application/pdf,.pdf"
+      multiple
+      (change)="onFileSelected($event)"
+    />
+
+    <div *ngIf="selectedFiles.length > 0" class="selected-files">
+      <h2>Archivos seleccionados</h2>
+      <ul>
+        <li *ngFor="let file of selectedFiles">{{ file.name }}</li>
+      </ul>
+    </div>
+
+    <button class="btn" (click)="uploadFile()" [disabled]="selectedFiles.length === 0 || !courseName.trim()">
+      Subir archivo(s)
+    </button>
+
+    <p *ngIf="uploadMessage" class="message">{{ uploadMessage }}</p>
+
+    <a class="back-link" routerLink="/view">Volver a visualizar fichas</a>
+  </section>
+</div>

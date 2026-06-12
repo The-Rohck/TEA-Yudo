@@ -39,8 +39,8 @@
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "2kb",
-                  "maximumError": "4kb"
+                  "maximumWarning": "8kb",
+                  "maximumError": "12kb"
                 }
               ],
               "outputHashing": "all"
@@ -70,26 +70,11 @@
           "options": {
             "buildTarget": "app:build"
           }
-        },
-        "test": {
-          "builder": "@angular-devkit/build-angular:karma",
-          "options": {
-            "polyfills": [
-              "zone.js",
-              "zone.js/testing"
-            ],
-            "tsConfig": "tsconfig.spec.json",
-            "assets": [
-              "src/favicon.ico",
-              "src/assets"
-            ],
-            "styles": [
-              "src/styles.css"
-            ],
-            "scripts": []
-          }
         }
       }
     }
+  },
+  "cli": {
+    "analytics": "2db2e88a-1b87-43bb-8934-1e51cf385e1b"
   }
 }

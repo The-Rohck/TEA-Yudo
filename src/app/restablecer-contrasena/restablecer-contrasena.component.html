@@ -1,0 +1,108 @@
+<!-- Vista dual: solicitud de recuperacion o creacion de contrasena por invitacion docente. -->
+<div class="reset-container">
+  <form *ngIf="!isInvitationMode" [formGroup]="resetForm" (ngSubmit)="enviarSolicitud()">
+    <img src="../../assets/imagenes/LogoEscuela.png" alt="Logo" class="logo" />
+
+    <h2>Restablecer Contrasena</h2>
+    <p class="intro">
+      Ingresa tu correo institucional para recibir las instrucciones de recuperacion.
+    </p>
+
+    <label for="email">Correo electronico</label>
+    <input
+      id="email"
+      type="email"
+      placeholder="nombre@escuela.cl"
+      formControlName="email"
+      autocomplete="email"
+    />
+
+    <div
+      class="error-message"
+      *ngIf="resetForm.get('email')?.touched && resetForm.get('email')?.hasError('required')"
+    >
+      Ingresa tu correo electronico
+    </div>
+
+    <div
+      class="error-message"
+      *ngIf="resetForm.get('email')?.touched && resetForm.get('email')?.hasError('email')"
+    >
+      Ingresa un correo valido
+    </div>
+
+    <button type="submit">Enviar instrucciones</button>
+
+    <p *ngIf="solicitudEnviada" class="success-message">
+      Si el correo esta registrado, recibiras un enlace para crear una nueva contrasena.
+    </p>
+
+    <a routerLink="/login" class="back-link">Volver al inicio de sesion</a>
+  </form>
+
+  <form *ngIf="isInvitationMode" [formGroup]="invitationForm" (ngSubmit)="confirmarInvitacion()">
+    <img src="../../assets/imagenes/LogoEscuela.png" alt="Logo" class="logo" />
+
+    <h2>Crear Contrasena</h2>
+
+    <p *ngIf="isLoadingInvitation" class="intro">
+      Validando invitacion...
+    </p>
+
+    <ng-container *ngIf="!isLoadingInvitation && invitation">
+      <p class="intro">
+        Confirma tu cuenta docente para {{ invitation.fullName }}.
+      </p>
+
+      <label for="teacherEmail">Correo electronico</label>
+      <input
+        id="teacherEmail"
+        type="email"
+        [value]="invitation.mail"
+        readonly
+      />
+
+      <label for="password">Nueva contrasena</label>
+      <input
+        id="password"
+        type="password"
+        placeholder="Minimo 6 caracteres"
+        formControlName="password"
+        autocomplete="new-password"
+      />
+
+      <div
+        class="error-message"
+        *ngIf="invitationForm.get('password')?.touched && invitationForm.get('password')?.invalid"
+      >
+        Minimo 6 caracteres
+      </div>
+
+      <label for="confirmPassword">Confirmar contrasena</label>
+      <input
+        id="confirmPassword"
+        type="password"
+        placeholder="Repite la contrasena"
+        formControlName="confirmPassword"
+        autocomplete="new-password"
+      />
+
+      <div
+        class="error-message"
+        *ngIf="invitationForm.get('confirmPassword')?.touched && invitationForm.get('confirmPassword')?.invalid"
+      >
+        Confirma tu contrasena
+      </div>
+
+      <button type="submit" [disabled]="isSavingPassword">
+        {{ isSavingPassword ? 'Guardando...' : 'Crear contrasena' }}
+      </button>
+    </ng-container>
+
+    <p *ngIf="invitationMessage" class="success-message">
+      {{ invitationMessage }}
+    </p>
+
+    <a routerLink="/login" class="back-link">Volver al inicio de sesion</a>
+  </form>
+</div>

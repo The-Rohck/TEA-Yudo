@@ -1,1 +1,11 @@
-/* You can add global styles to this file, and also import other style files */
+/* Estilos globales minimos compartidos por todas las pantallas de la aplicacion. */
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+  background: #008cba;
+}
+
+body {
+  min-height: 100vh;
+}

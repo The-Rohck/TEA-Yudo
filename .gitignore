@@ -1,3 +1,4 @@
+# Reglas de exclusion para evitar subir dependencias, builds y secretos locales.
 # See https://docs.github.com/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
 
 # Compiled output
@@ -8,8 +9,12 @@
 
 # Node
 /node_modules
+/server/node_modules
 npm-debug.log
 yarn-error.log
+
+# Environment variables
+/server/.env
 
 # IDEs and editors
 .idea/

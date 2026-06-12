@@ -1,0 +1,7 @@
+<!-- Menu simple de acciones para decidir entre subir fichas o revisar el panel. -->
+<div class="container">
+  <img src="../../assets/imagenes/LogoEscuela.png" alt="Logo" class="logo" />
+  <h1 class="Titulo">¿Qué acción desea realizar?</h1>
+  <button *ngIf="canLoadFicha" class="btn iniciarSesion_boton" routerLink="/upload">Cargar Ficha</button>
+  <button class="btn registrarse_boton" routerLink="/view">Visualizar Fichas</button>
+</div>
