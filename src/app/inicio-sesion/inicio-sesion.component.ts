@@ -35,7 +35,10 @@ export class InicioSesionComponent {
     const usersByName = new Map(this.defaultUsers.map(user => [user.username, user]));
 
     for (const user of customUsers) {
-      usersByName.set(user.username, user);
+      usersByName.set(user.username.trim().toLowerCase(), {
+        ...user,
+        username: user.username.trim().toLowerCase()
+      });
     }
 
     return Array.from(usersByName.values());

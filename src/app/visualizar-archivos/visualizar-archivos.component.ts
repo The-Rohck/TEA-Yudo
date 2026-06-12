@@ -864,7 +864,7 @@ export class VisualizarArchivosComponent implements OnInit {
   }
 
   saveProfile() {
-    const username = this.profileUsername.trim();
+    const username = this.profileUsername.trim().toLowerCase();
     const password = this.profilePassword.trim();
 
     if (!username) {
@@ -885,7 +885,10 @@ export class VisualizarArchivosComponent implements OnInit {
     // Se reemplaza el usuario actual sin duplicar nombres anteriores en localStorage.
     const previousUsername = this.currentUser?.username || username;
     const users = this.getProfileUsers()
-      .filter(user => user.username !== previousUsername && user.username !== username);
+      .filter(user => {
+        const storedUsername = user.username.trim().toLowerCase();
+        return storedUsername !== previousUsername.trim().toLowerCase() && storedUsername !== username;
+      });
 
     users.push(updatedUser);
     localStorage.setItem(this.usersStorageKey, JSON.stringify(users));
