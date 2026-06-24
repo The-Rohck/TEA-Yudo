@@ -16,7 +16,7 @@ import { FileServiceService } from '../file-service.service';
 export class SubirArchivoComponent {
   // Estado del formulario de subida clasico; la vista de visualizacion usa un modal propio.
   selectedFiles: File[] = [];
-  courseName: string = '';
+  selectedCourses: string[] = [];
   courses: string[] = [];
   uploadMessage: string = '';
   private coursesStorageKey = 'appCourses';
@@ -44,8 +44,10 @@ export class SubirArchivoComponent {
 
     const fileCourses = this.fileService.getFiles().map(file => file.course || 'Sin curso');
     // Combina cursos creados explicitamente con cursos ya presentes en fichas guardadas.
-    this.courses = Array.from(new Set([...savedCourses, ...fileCourses])).sort();
-    this.courseName = this.courses[0] || '';
+    this.courses = Array.from(new Set([...savedCourses, ...fileCourses]))
+      .filter(course => course.trim().toLowerCase() !== 'sin curso')
+      .sort();
+    this.selectedCourses = this.courses[0] ? [this.courses[0]] : [];
   }
 
   onFileSelected(event: Event) {
@@ -71,8 +73,8 @@ export class SubirArchivoComponent {
   }
 
   async uploadFile() {
-    if (this.selectedFiles.length === 0 || !this.courseName.trim()) {
-      this.uploadMessage = 'Selecciona archivos PDF y un curso del listado.';
+    if (this.selectedFiles.length === 0 || this.selectedCourses.length === 0) {
+      this.uploadMessage = 'Selecciona archivos PDF y al menos un curso del listado.';
       return;
     }
 
@@ -81,17 +83,29 @@ export class SubirArchivoComponent {
     if (confirmed) {
       try {
         for (const file of this.selectedFiles) {
-          await this.fileService.saveFile(file, this.courseName);
+          for (const course of this.selectedCourses) {
+            await this.fileService.saveFile(file, course);
+          }
         }
 
-        this.uploadMessage = 'Archivo(s) subido(s) exitosamente.';
+        this.uploadMessage = `Ficha(s) asociada(s) a ${this.selectedCourses.length} curso(s) correctamente.`;
         this.selectedFiles = [];
-        this.courseName = this.courses[0] || '';
+        this.selectedCourses = this.courses[0] ? [this.courses[0]] : [];
       } catch (error) {
         this.uploadMessage = 'Error al subir el archivo.';
       }
     } else {
       this.uploadMessage = 'Subida cancelada.';
     }
+  }
+
+  isCourseSelected(course: string): boolean {
+    return this.selectedCourses.includes(course);
+  }
+
+  toggleCourse(course: string, checked: boolean) {
+    this.selectedCourses = checked
+      ? Array.from(new Set([...this.selectedCourses, course])).sort()
+      : this.selectedCourses.filter(item => item !== course);
   }
 }

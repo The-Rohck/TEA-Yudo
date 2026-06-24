@@ -4,15 +4,17 @@
     <h1>Cargar ficha</h1>
     <p>Selecciona uno o varios archivos PDF para subirlos al sistema.</p>
 
-    <label for="courseName">Curso asociado</label>
-    <select
-      id="courseName"
-      [value]="courseName"
-      (change)="courseName = $any($event.target).value"
-    >
-      <option value="" disabled>Selecciona un curso</option>
-      <option *ngFor="let course of courses" [value]="course">{{ course }}</option>
-    </select>
+    <label>Cursos asociados</label>
+    <div class="course-checkbox-list" *ngIf="courses.length > 0">
+      <label *ngFor="let course of courses" class="course-checkbox">
+        <input
+          type="checkbox"
+          [checked]="isCourseSelected(course)"
+          (change)="toggleCourse(course, $any($event.target).checked)"
+        />
+        <span>{{ course }}</span>
+      </label>
+    </div>
 
     <p *ngIf="courses.length === 0" class="empty-message">
       Primero agrega un curso desde la pantalla de visualizacion.
@@ -32,7 +34,7 @@
       </ul>
     </div>
 
-    <button class="btn" (click)="uploadFile()" [disabled]="selectedFiles.length === 0 || !courseName.trim()">
+    <button class="btn" (click)="uploadFile()" [disabled]="selectedFiles.length === 0 || selectedCourses.length === 0">
       Subir archivo(s)
     </button>
 

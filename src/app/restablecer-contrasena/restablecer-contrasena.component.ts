@@ -83,7 +83,7 @@ export class RestablecerContrasenaComponent implements OnInit {
       const teacher = await firstValueFrom(
         this.apiService.confirmTeacherInvitation(this.invitationToken, password)
       );
-      this.upsertLocalUser(teacher.mail, password);
+      this.upsertLocalUser(teacher.mail, teacher.fullName, password);
       this.invitationMessage = 'Contrasena creada correctamente. Redirigiendo al inicio de sesion...';
 
       setTimeout(() => {
@@ -110,19 +110,62 @@ export class RestablecerContrasenaComponent implements OnInit {
     }
   }
 
-  private upsertLocalUser(mail: string, password: string) {
+  private upsertLocalUser(mail: string, fullName: string, password: string) {
     const storedUsers = localStorage.getItem(this.usersStorageKey);
     const customUsers = storedUsers ? JSON.parse(storedUsers) : [];
-    const username = mail.trim().toLowerCase();
     const usersByName = new Map(customUsers.map((user: any) => [user.username, user]));
+    const usernames = [
+      mail.trim().toLowerCase(),
+      ...this.getNameLoginIdentifiers(fullName)
+    ];
 
-    usersByName.set(username, {
-      username,
-      password,
-      role: 'docente'
-    });
+    for (const username of usernames) {
+      usersByName.set(username, {
+        username,
+        password,
+        role: 'docente'
+      });
+    }
 
     localStorage.setItem(this.usersStorageKey, JSON.stringify(Array.from(usersByName.values())));
+  }
+
+  private getNameLoginIdentifiers(fullName: string): string[] {
+    const parts = this.normalizeLoginIdentifier(fullName)
+      .split(' ')
+      .filter(Boolean);
+
+    if (parts.length < 2) {
+      return [];
+    }
+
+    const firstName = parts[0];
+    const surnameCandidates = new Set([parts[1]]);
+
+    if (parts.length >= 4) {
+      surnameCandidates.add(parts[parts.length - 2]);
+    }
+
+    const identifiers = new Set<string>();
+
+    for (const surname of surnameCandidates) {
+      identifiers.add(`${firstName} ${surname}`);
+      identifiers.add(`${firstName}.${surname}`);
+      identifiers.add(`${firstName}${surname}`);
+    }
+
+    return Array.from(identifiers);
+  }
+
+  private normalizeLoginIdentifier(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9@.]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private getErrorMessage(error: unknown, fallback: string): string {

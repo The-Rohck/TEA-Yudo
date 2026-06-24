@@ -138,7 +138,10 @@
     </ul>
   </section>
 
-  <section *ngIf="!isInitializing && !selectedTeacher && !isViewingUnassignedCourses && !selectedCourse" class="file-section">
+  <section
+    *ngIf="canUploadFicha && !isInitializing && !selectedTeacher && !isViewingUnassignedCourses && !selectedCourse"
+    class="file-section"
+  >
     <!-- Primer nivel: seleccion de profesor o cursos sin asignar. -->
     <h2>Profesores</h2>
 
@@ -177,7 +180,10 @@
     </button>
   </section>
 
-  <section *ngIf="(selectedTeacher || isViewingUnassignedCourses) && !selectedCourse" class="file-section">
+  <section
+    *ngIf="!isInitializing && !selectedCourse && ((canUploadFicha && (selectedTeacher || isViewingUnassignedCourses)) || !canUploadFicha)"
+    class="file-section"
+  >
     <!-- Segundo nivel: cursos del profesor seleccionado. -->
     <div class="detail-header">
       <div>
@@ -201,7 +207,7 @@
         >
           {{ isDisaffiliatingTeacher(selectedTeacher) ? 'Desafiliando...' : 'Desafiliar' }}
         </button>
-        <button class="secondary-button" (click)="backToTeachers()">Volver a profesores</button>
+        <button *ngIf="canUploadFicha" class="secondary-button" (click)="backToTeachers()">Volver a profesores</button>
       </div>
     </div>
 
@@ -232,14 +238,6 @@
           </button>
 
           <button
-            *ngIf="canUploadFicha && selectedTeacher"
-            class="course-action-button"
-            (click)="openUploadModal(course, $event)"
-          >
-            Agregar ficha
-          </button>
-
-          <button
             *ngIf="canDeleteCourse(course)"
             class="delete-course-button"
             (click)="deleteCourse(course, $event)"
@@ -259,10 +257,9 @@
         <p>Fichas asociadas al curso</p>
       </div>
       <div class="detail-actions">
-        <button *ngIf="canUploadFicha && selectedTeacher" (click)="openUploadModal(selectedCourse)">
-          Agregar ficha
+        <button class="secondary-button" (click)="backToCourses()">
+          {{ canUploadFicha ? 'Volver a cursos del profesor' : 'Volver a mis cursos' }}
         </button>
-        <button class="secondary-button" (click)="backToCourses()">Volver a cursos del profesor</button>
       </div>
     </div>
 
@@ -286,7 +283,16 @@
     <!-- Visor de ficha: muestra los datos extraidos del PDF y su historial. -->
     <div class="detail-header">
       <h2>{{ selectedFile.name }}</h2>
-      <button (click)="closeViewer()" class="secondary-button">Cerrar</button>
+      <div class="detail-actions">
+        <button
+          *ngIf="canUploadFicha"
+          (click)="openEditFichaModal(selectedFile)"
+          class="edit-button"
+        >
+          Editar ficha
+        </button>
+        <button (click)="closeViewer()" class="secondary-button">Cerrar</button>
+      </div>
     </div>
 
     <p *ngIf="isLoading" class="loading-message">Cargando informacion...</p>
@@ -464,24 +470,26 @@
   </section>
 
   <div *ngIf="isUploadModalOpen" class="modal-background" (click)="closeUploadModal()">
-    <!-- Modal para carga masiva de PDF en un curso existente. -->
+    <!-- Modal para asociar una ficha PDF a uno o varios cursos existentes. -->
     <section class="modal-card" (click)="$event.stopPropagation()">
       <div class="modal-header">
         <h2>Subir ficha PDF</h2>
         <button class="secondary-button" (click)="closeUploadModal()">Cerrar</button>
       </div>
 
-      <p>Selecciona uno o varios archivos PDF para agregarlos a la lista.</p>
+      <p>Seleccione una Ficha de Orientación Pedagógica para añadirla a la lista.</p>
 
-      <label for="courseInput">Curso asociado</label>
-      <select
-        id="courseInput"
-        [value]="uploadCourse"
-        (change)="uploadCourse = $any($event.target).value"
-      >
-        <option value="" disabled>Selecciona un curso</option>
-        <option *ngFor="let course of courses" [value]="course">{{ course }}</option>
-      </select>
+      <label>Cursos asociados</label>
+      <div class="course-checkbox-list" *ngIf="courses.length > 0">
+        <label *ngFor="let course of courses">
+          <input
+            type="checkbox"
+            [checked]="isUploadCourseSelected(course)"
+            (change)="toggleUploadCourse(course, $any($event.target).checked)"
+          />
+          <span>{{ course }}</span>
+        </label>
+      </div>
 
       <p *ngIf="courses.length === 0" class="empty-message">
         Primero agrega un curso desde Opciones.
@@ -501,7 +509,10 @@
         </ul>
       </div>
 
-      <button (click)="uploadSelectedFiles()" [disabled]="selectedUploadFiles.length === 0 || !uploadCourse.trim()">
+      <button
+        (click)="uploadSelectedFiles()"
+        [disabled]="selectedUploadFiles.length === 0 || uploadCourses.length === 0"
+      >
         Subir archivo(s)
       </button>
 
@@ -580,13 +591,13 @@
         (input)="editingFichaName = $any($event.target).value"
       />
 
-      <label for="editingFichaCourse">Curso asociado</label>
+      <label for="editingFichaCourse">Asignatura asociada (opcional)</label>
       <select
         id="editingFichaCourse"
         [value]="editingFichaCourse"
         (change)="editingFichaCourse = $any($event.target).value"
       >
-        <option value="" disabled>Selecciona un curso</option>
+        <option value="Sin curso">Sin asignatura</option>
         <option *ngFor="let course of courses" [value]="course">{{ course }}</option>
       </select>
 

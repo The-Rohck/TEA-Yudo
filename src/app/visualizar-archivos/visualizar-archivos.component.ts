@@ -6,6 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService, EmailNotification } from '../api.service';
 import { FileHistoryEntry, FileServiceService, UploadedFile } from '../file-service.service';
 import * as pdfjsLib from 'pdfjs-dist';
+import { AuthService } from '../auth.service';
 
 // Panel principal de administracion, lectura y asignacion de fichas.
 // Configurar el worker de PDF.js
@@ -62,7 +63,7 @@ export class VisualizarArchivosComponent implements OnInit {
   selectedCourse: string | null = null;
   pdfReadError: string = '';
   showFullHistory: boolean = false;
-  currentUser: { username: string; role: string } | null = null;
+  currentUser: { username: string; role: string; rut?: string; fullName?: string } | null = null;
   extractedData: {
     nombre: string;
     rut: string;
@@ -93,6 +94,7 @@ export class VisualizarArchivosComponent implements OnInit {
   studentCategoryFilter: 'todos' | 'con-cursos' | 'sin-asignaturas' = 'todos';
   selectedUploadFiles: File[] = [];
   uploadCourse: string = '';
+  uploadCourses: string[] = [];
   uploadMessage: string = '';
   profileUsername: string = '';
   profilePassword: string = '';
@@ -136,7 +138,8 @@ export class VisualizarArchivosComponent implements OnInit {
     private fileService: FileServiceService,
     private apiService: ApiService,
     private router: Router,
-    private elementRef: ElementRef
+    private elementRef: ElementRef,
+    private authService: AuthService
   ) {}
 
   async ngOnInit() {
@@ -200,11 +203,16 @@ export class VisualizarArchivosComponent implements OnInit {
     }
 
     // El docente puede iniciar sesion con correo, RUT o nombre segun los datos locales.
-    const normalizedUsername = this.normalizeUserKey(this.currentUser.username);
+    const userIdentifiers = [
+      this.currentUser.username,
+      this.currentUser.rut || '',
+      this.currentUser.fullName || ''
+    ].map(value => this.normalizeUserKey(value));
+
     return this.registeredTeachers.find(teacher =>
-      this.normalizeUserKey(teacher.mail) === normalizedUsername ||
-      this.normalizeUserKey(teacher.rut) === normalizedUsername ||
-      this.normalizeUserKey(teacher.fullName) === normalizedUsername
+      userIdentifiers.includes(this.normalizeUserKey(teacher.mail)) ||
+      userIdentifiers.includes(this.normalizeUserKey(teacher.rut)) ||
+      userIdentifiers.includes(this.normalizeUserKey(teacher.fullName))
     ) || null;
   }
 
@@ -315,11 +323,13 @@ export class VisualizarArchivosComponent implements OnInit {
       return this.unassignedCourses;
     }
 
-    if (!this.selectedTeacher) {
+    const teacher = this.canUploadFicha ? this.selectedTeacher : this.currentTeacher;
+
+    if (!teacher) {
       return [];
     }
 
-    return (this.selectedTeacher.courses || [])
+    return (teacher.courses || [])
       .filter(course => this.canViewCourse(course))
       .sort();
   }
@@ -744,12 +754,22 @@ export class VisualizarArchivosComponent implements OnInit {
       return 'Cursos sin profesor asignado';
     }
 
+    if (!this.canUploadFicha) {
+      return 'Mis cursos';
+    }
+
     return this.selectedTeacher?.fullName || 'Profesor';
   }
 
   getSelectedTeacherSubtitle(): string {
     if (this.isViewingUnassignedCourses) {
       return 'Cursos pendientes de asignar';
+    }
+
+    if (!this.canUploadFicha) {
+      return this.currentTeacher
+        ? `${this.currentTeacher.fullName} · ${this.currentTeacher.mail}`
+        : 'No se encontraron cursos asociados a tu perfil.';
     }
 
     return this.selectedTeacher?.mail || '';
@@ -817,8 +837,7 @@ export class VisualizarArchivosComponent implements OnInit {
   }
 
   loadCurrentUser() {
-    const storedUser = localStorage.getItem('currentUser');
-    this.currentUser = storedUser ? JSON.parse(storedUser) : null;
+    this.currentUser = this.authService.getCurrentUser();
     this.profileUsername = this.currentUser?.username || '';
     this.profilePassword = '';
   }
@@ -863,7 +882,7 @@ export class VisualizarArchivosComponent implements OnInit {
     this.profileMessage = '';
   }
 
-  saveProfile() {
+  async saveProfile() {
     const username = this.profileUsername.trim().toLowerCase();
     const password = this.profilePassword.trim();
 
@@ -877,11 +896,35 @@ export class VisualizarArchivosComponent implements OnInit {
       return;
     }
 
-    const updatedUser = {
+    let updatedUser = {
       username,
       password,
-      role: this.currentUser?.role || 'docente'
+      role: this.currentUser?.role || 'docente',
+      rut: this.currentUser?.rut,
+      fullName: this.currentUser?.fullName
     };
+
+    try {
+      const apiUser = await firstValueFrom(
+        this.apiService.updateProfile(
+          this.currentUser?.username || username,
+          this.currentUser?.rut,
+          username,
+          password
+        )
+      );
+
+      updatedUser = {
+        username: apiUser.username,
+        password,
+        role: apiUser.role,
+        rut: apiUser.rut,
+        fullName: apiUser.fullName
+      };
+    } catch (error) {
+      console.warn('No se pudo guardar el perfil en la API, se usara respaldo local:', error);
+    }
+
     // Se reemplaza el usuario actual sin duplicar nombres anteriores en localStorage.
     const previousUsername = this.currentUser?.username || username;
     const users = this.getProfileUsers()
@@ -893,13 +936,17 @@ export class VisualizarArchivosComponent implements OnInit {
     users.push(updatedUser);
     localStorage.setItem(this.usersStorageKey, JSON.stringify(users));
 
-    localStorage.setItem('currentUser', JSON.stringify({
+    this.authService.updateCurrentUser({
       username: updatedUser.username,
-      role: updatedUser.role
-    }));
+      role: updatedUser.role as 'administrador' | 'docente',
+      rut: updatedUser.rut,
+      fullName: updatedUser.fullName
+    });
     this.currentUser = {
       username: updatedUser.username,
-      role: updatedUser.role
+      role: updatedUser.role,
+      rut: updatedUser.rut,
+      fullName: updatedUser.fullName
     };
     this.profilePassword = '';
     this.profileMessage = 'Perfil actualizado correctamente.';
@@ -907,9 +954,8 @@ export class VisualizarArchivosComponent implements OnInit {
 
   cerrarSesion() {
     this.closeOptionsMenu();
-    localStorage.removeItem('currentUser');
     this.currentUser = null;
-    this.router.navigate(['/login']);
+    this.authService.logout();
   }
 
   openAddTeacherModal() {
@@ -1430,6 +1476,7 @@ export class VisualizarArchivosComponent implements OnInit {
     this.isUploadModalOpen = true;
     this.selectedUploadFiles = [];
     this.uploadCourse = course || this.courses[0] || '';
+    this.uploadCourses = this.uploadCourse ? [this.uploadCourse] : [];
     this.uploadMessage = '';
   }
 
@@ -1437,6 +1484,7 @@ export class VisualizarArchivosComponent implements OnInit {
     this.isUploadModalOpen = false;
     this.selectedUploadFiles = [];
     this.uploadCourse = '';
+    this.uploadCourses = [];
     this.uploadMessage = '';
   }
 
@@ -1463,29 +1511,48 @@ export class VisualizarArchivosComponent implements OnInit {
   }
 
   async uploadSelectedFiles() {
-    if (this.selectedUploadFiles.length === 0 || !this.uploadCourse.trim()) {
-      this.uploadMessage = 'Selecciona archivos PDF e ingresa el curso.';
+    if (this.selectedUploadFiles.length === 0 || this.uploadCourses.length === 0) {
+      this.uploadMessage = 'Selecciona archivos PDF y al menos un curso.';
       return;
     }
 
     try {
-      const uploadedCourse = this.uploadCourse.trim();
+      const uploadedCourses = [...this.uploadCourses];
       await this.validateSingleFichaPerStudent(this.selectedUploadFiles);
       // La subida masiva reutiliza el servicio para validar duplicados y persistir historial.
       for (const file of this.selectedUploadFiles) {
-        await this.fileService.saveFile(file, uploadedCourse);
+        for (const course of uploadedCourses) {
+          await this.fileService.saveFile(file, course);
+        }
       }
 
-      this.uploadMessage = 'Archivo(s) subido(s) exitosamente.';
+      this.uploadMessage = `Ficha(s) asociada(s) a ${uploadedCourses.length} curso(s) correctamente.`;
       this.selectedUploadFiles = [];
       this.uploadCourse = '';
+      this.uploadCourses = [];
       await this.loadFiles();
-      this.selectedCourse = uploadedCourse;
+      this.selectedCourse = uploadedCourses[0] || null;
       this.closeViewer();
     } catch (error) {
       console.error('No se pudieron subir los archivos:', error);
       this.uploadMessage = this.getUploadErrorMessage(error);
     }
+  }
+
+  isUploadCourseSelected(course: string): boolean {
+    return this.uploadCourses.some(item => this.normalizeCourseKey(item) === this.normalizeCourseKey(course));
+  }
+
+  toggleUploadCourse(course: string, checked: boolean) {
+    const normalizedCourse = this.normalizeCourseKey(course);
+    const coursesWithoutCurrent = this.uploadCourses
+      .filter(item => this.normalizeCourseKey(item) !== normalizedCourse);
+
+    this.uploadCourses = checked
+      ? [...coursesWithoutCurrent, course].sort()
+      : coursesWithoutCurrent;
+
+    this.uploadCourse = this.uploadCourses[0] || '';
   }
 
   private getUploadErrorMessage(error: unknown): string {
@@ -1564,7 +1631,7 @@ export class VisualizarArchivosComponent implements OnInit {
 
     this.editingFichaIndex = fileIndex;
     this.editingFichaName = file.name;
-    this.editingFichaCourse = file.course || this.courses[0] || '';
+    this.editingFichaCourse = this.hasRealCourse(file.course) ? file.course! : 'Sin curso';
     this.editingFichaDate = file.date || new Date().toISOString().slice(0, 10);
     this.editingFichaFiles = [];
     this.editingFichaMessage = '';
@@ -1609,11 +1676,11 @@ export class VisualizarArchivosComponent implements OnInit {
     }
 
     const name = this.editingFichaName.trim();
-    const course = this.editingFichaCourse.trim();
+    const course = this.editingFichaCourse.trim() || 'Sin curso';
     const date = this.editingFichaDate;
 
-    if (!name || !course || !date) {
-      this.editingFichaMessage = 'Ingresa el nombre de la ficha, el curso y la fecha.';
+    if (!name || !date) {
+      this.editingFichaMessage = 'Ingresa el nombre y la fecha de la ficha.';
       return;
     }
 
@@ -1622,7 +1689,7 @@ export class VisualizarArchivosComponent implements OnInit {
       let createdCount = 0;
       let replacedCount = 0;
 
-      // Los PDF agregados desde la edicion reemplazan coincidencias del mismo curso.
+      // Los PDF agregados pueden mantenerse sin asignatura o asociarse al curso elegido.
       for (const file of this.editingFichaFiles) {
         const result = await this.fileService.saveFile(file, course, true);
 

@@ -9,8 +9,14 @@ const db = require('./db');
 // API local que conecta el frontend Angular con la base de datos TEA-yudo.
 const app = express();
 const port = Number(process.env.PORT || 3000);
-const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:4200';
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:4200')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+const frontendUrl = allowedOrigins[0] || 'http://localhost:4200';
 const smtpFrom = process.env.SMTP_FROM || 'soporte@teayudocl.com';
+const authSecret = process.env.AUTH_SECRET || crypto.randomBytes(32).toString('hex');
+const authTokenDurationSeconds = Number(process.env.AUTH_TOKEN_DURATION_SECONDS || 28800);
 const smtpTransporter = process.env.SMTP_HOST
   ? nodemailer.createTransport({
       host: process.env.SMTP_HOST,
@@ -36,10 +42,118 @@ Agradecemos su colaboración y compromiso con el desarrollo de una educación in
 
 // El frontend corre normalmente en Angular dev server, pero se puede cambiar por variable de entorno.
 app.use(cors({
-  origin: frontendUrl
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error('Origen no permitido por CORS.'));
+  }
 }));
 // El PDF viaja codificado en Base64, por lo que ocupa mas que el archivo original.
 app.use(express.json({ limit: '50mb' }));
+
+function encodeBase64Url(value) {
+  return Buffer.from(value).toString('base64url');
+}
+
+function createAuthToken(user) {
+  const payload = encodeBase64Url(JSON.stringify({
+    sub: user.rut,
+    username: user.mail,
+    role: Number(user.tipoUsuario) === 2 ? 'docente' : 'administrador',
+    exp: Math.floor(Date.now() / 1000) + authTokenDurationSeconds
+  }));
+  const signature = crypto
+    .createHmac('sha256', authSecret)
+    .update(payload)
+    .digest('base64url');
+
+  return `${payload}.${signature}`;
+}
+
+function authenticateToken(req, res, next) {
+  const authorization = String(req.headers.authorization || '');
+  const [scheme, token] = authorization.split(' ');
+
+  if (scheme !== 'Bearer' || !token) {
+    res.status(401).json({ message: 'Debes iniciar sesion para acceder a esta ruta.' });
+    return;
+  }
+
+  const [payload, signature] = token.split('.');
+
+  if (!payload || !signature) {
+    res.status(401).json({ message: 'La sesion no es valida.' });
+    return;
+  }
+
+  const expectedSignature = crypto
+    .createHmac('sha256', authSecret)
+    .update(payload)
+    .digest();
+  let receivedSignature;
+
+  try {
+    receivedSignature = Buffer.from(signature, 'base64url');
+  } catch {
+    res.status(401).json({ message: 'La sesion no es valida.' });
+    return;
+  }
+
+  if (
+    receivedSignature.length !== expectedSignature.length ||
+    !crypto.timingSafeEqual(receivedSignature, expectedSignature)
+  ) {
+    res.status(401).json({ message: 'La sesion no es valida.' });
+    return;
+  }
+
+  try {
+    const session = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+
+    if (!session.sub || !session.role || Number(session.exp) <= Math.floor(Date.now() / 1000)) {
+      res.status(401).json({ message: 'La sesion expiro. Inicia sesion nuevamente.' });
+      return;
+    }
+
+    req.user = session;
+    next();
+  } catch {
+    res.status(401).json({ message: 'La sesion no es valida.' });
+  }
+}
+
+function isPublicApiRoute(req) {
+  return (
+    req.path === '/health' ||
+    (req.method === 'POST' && req.path === '/app/auth/login') ||
+    (req.method === 'POST' && req.path === '/app/profesores/confirmar-invitacion') ||
+    (req.method === 'GET' && req.path.startsWith('/app/profesores/invitacion/'))
+  );
+}
+
+app.use('/api', (req, res, next) => {
+  if (isPublicApiRoute(req)) {
+    next();
+    return;
+  }
+
+  authenticateToken(req, res, next);
+});
+
+app.use('/api', (req, res, next) => {
+  const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
+  const isOwnProfileUpdate = req.method === 'PUT' && req.path === '/app/auth/profile';
+
+  if (isMutation && !isOwnProfileUpdate && !isPublicApiRoute(req) && req.user?.role !== 'administrador') {
+    res.status(403).json({ message: 'No tienes permisos para realizar esta accion.' });
+    return;
+  }
+
+  next();
+});
 
 async function tryQuery(sql) {
   try {
@@ -70,6 +184,58 @@ function createCode(prefix) {
 
 function createSecureToken() {
   return crypto.randomBytes(32).toString('hex');
+}
+
+function normalizeLoginIdentifier(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9@.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getNameLoginIdentifiers(fullName) {
+  const parts = normalizeLoginIdentifier(fullName)
+    .split(' ')
+    .filter(Boolean);
+
+  if (parts.length < 2) {
+    return [];
+  }
+
+  const firstName = parts[0];
+  const surnameCandidates = new Set([parts[1]]);
+
+  if (parts.length >= 4) {
+    surnameCandidates.add(parts[parts.length - 2]);
+  }
+
+  const identifiers = new Set();
+
+  for (const surname of surnameCandidates) {
+    identifiers.add(`${firstName} ${surname}`);
+    identifiers.add(`${firstName}.${surname}`);
+    identifiers.add(`${firstName}${surname}`);
+  }
+
+  return Array.from(identifiers);
+}
+
+function canLoginWithUsername(user, username) {
+  const normalizedUsername = normalizeLoginIdentifier(username);
+  const mail = String(user.mail || '').trim().toLowerCase();
+  const mailLocalPart = mail.includes('@') ? mail.split('@')[0] : '';
+  const identifiers = new Set([
+    mail,
+    mailLocalPart,
+    normalizeLoginIdentifier(user.mail),
+    ...getNameLoginIdentifiers(user.nombre)
+  ]);
+
+  return identifiers.has(normalizedUsername);
 }
 
 function addDays(date, days) {
@@ -163,12 +329,13 @@ async function ensureApplicationColumns() {
   // Una persona puede tener mas de una ficha y las cargas iniciales usan un estudiante marcador.
   await tryQuery('ALTER TABLE fichas ADD INDEX idx_fichas_estudiante (rut_estudiante)');
   await tryQuery('ALTER TABLE fichas DROP INDEX uq_fichas_estudiante');
-  // Conserva una sola copia de cada ficha heredada antes de aplicar la restriccion.
+  // Conserva una sola copia por curso antes de aplicar la restriccion compuesta.
   await tryQuery(`
     DELETE duplicate
     FROM fichas duplicate
     INNER JOIN fichas keeper
       ON duplicate.pdf = keeper.pdf
+     AND COALESCE(duplicate.curso, 'Sin curso') = COALESCE(keeper.curso, 'Sin curso')
      AND (
        CASE
          WHEN duplicate.rut_estudiante IS NULL OR duplicate.rut_estudiante = '00000000-0' THEN 0
@@ -197,8 +364,8 @@ async function ensureApplicationColumns() {
        )
      )
   `);
-  await tryQuery('ALTER TABLE fichas ADD UNIQUE INDEX uq_fichas_pdf (pdf(191))');
-  await tryQuery('ALTER TABLE fichas ADD INDEX idx_fichas_pdf_curso (pdf(191), curso(191))');
+  await tryQuery('ALTER TABLE fichas DROP INDEX uq_fichas_pdf');
+  await tryQuery('ALTER TABLE fichas ADD UNIQUE INDEX uq_fichas_pdf_curso (pdf(191), curso(191))');
 
   await tryQuery(`
     INSERT IGNORE INTO carreras (id_codigo, nombre)
@@ -211,6 +378,12 @@ async function ensureApplicationColumns() {
   await tryQuery(`
     INSERT IGNORE INTO estudiantes (rut, nombre, anio_ingreso, carrera_id)
     VALUES ('00000000-0', 'Sin estudiante', YEAR(CURDATE()), 'SINCAR')
+  `);
+  await tryQuery(`
+    INSERT IGNORE INTO usuarios (rut, tipo_usuario, contrasena, nombre, mail, invitacion_confirmada)
+    VALUES
+      ('ADMIN1', 1, '123456', 'Tutora Administradora', 'tutora@teayudo.local', 1),
+      ('ADMIN2', 1, '123456', 'Administrador Secundario', 'admin@teayudo.local', 1)
   `);
 }
 
@@ -541,6 +714,107 @@ app.post('/api/app/profesores/confirmar-invitacion', async (req, res) => {
     res.status(500).json({ message: error.message });
   } finally {
     connection.release();
+  }
+});
+
+app.post('/api/app/auth/login', async (req, res) => {
+  const username = String(req.body.username || '').trim();
+  const password = String(req.body.password || '');
+
+  if (!username || !password) {
+    res.status(400).json({ message: 'Usuario y contrasena son obligatorios.' });
+    return;
+  }
+
+  try {
+    const [users] = await db.query(
+      `SELECT
+         rut,
+         nombre,
+         mail,
+         tipo_usuario AS tipoUsuario,
+         invitacion_confirmada AS invitacionConfirmada
+       FROM usuarios
+       WHERE contrasena = ?`,
+      [password]
+    );
+    const user = users.find(item => canLoginWithUsername(item, username));
+
+    if (!user) {
+      res.status(401).json({ message: 'Usuario o contrasena incorrectos.' });
+      return;
+    }
+
+    if (Number(user.tipoUsuario) === 2 && Number(user.invitacionConfirmada) !== 1) {
+      res.status(403).json({ message: 'Debes confirmar tu invitacion antes de iniciar sesion.' });
+      return;
+    }
+
+    res.json({
+      username: user.mail,
+      rut: user.rut,
+      fullName: user.nombre,
+      role: Number(user.tipoUsuario) === 2 ? 'docente' : 'administrador',
+      token: createAuthToken(user)
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.put('/api/app/auth/profile', async (req, res) => {
+  const username = String(req.body.username || '').trim().toLowerCase();
+  const password = String(req.body.password || '');
+
+  if (!username || !password) {
+    res.status(400).json({ message: 'Usuario y contrasena son obligatorios.' });
+    return;
+  }
+
+  if (password.length < 6) {
+    res.status(400).json({ message: 'La contrasena debe tener minimo 6 caracteres.' });
+    return;
+  }
+
+  try {
+    const [users] = await db.query(
+      `SELECT
+         rut,
+         nombre,
+         mail,
+         tipo_usuario AS tipoUsuario,
+         invitacion_confirmada AS invitacionConfirmada
+       FROM usuarios`
+    );
+    const currentUser = users.find(user => user.rut === req.user.sub);
+
+    if (!currentUser) {
+      res.status(404).json({ message: 'No se encontro el usuario actual en la base de datos.' });
+      return;
+    }
+
+    const nextMail = username.includes('@') ? username : `${username}@teayudo.local`;
+
+    await db.query(
+      `UPDATE usuarios
+       SET mail = ?, contrasena = ?
+       WHERE rut = ?`,
+      [nextMail, password, currentUser.rut]
+    );
+
+    res.json({
+      username: nextMail,
+      rut: currentUser.rut,
+      fullName: currentUser.nombre,
+      role: Number(currentUser.tipoUsuario) === 2 ? 'docente' : 'administrador'
+    });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(409).json({ message: 'Ese nombre de usuario ya esta en uso.' });
+      return;
+    }
+
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -905,27 +1179,25 @@ app.get('/api/app/archivos', async (req, res) => {
 
 app.post('/api/app/archivos', async (req, res) => {
   const { name, data, type, course, date, history } = req.body;
+  const normalizedCourse = String(course || '').trim() || 'Sin curso';
+  const hasCourseAssociation = normalizedCourse.toLowerCase() !== 'sin curso';
 
-  if (!name || !data || !type || !course || !date) {
+  if (!name || !data || !type || !date) {
     res.status(400).json({ message: 'Faltan datos obligatorios del archivo.' });
     return;
   }
 
   try {
-    await ensureCourse(course);
+    if (hasCourseAssociation) {
+      await ensureCourse(normalizedCourse);
+    }
 
-    // Una ficha solo puede existir una vez, incluso si se intenta subirla en otro curso.
     const [existingFiles] = await db.query(
-      'SELECT id_codigo, curso FROM fichas WHERE pdf = ? LIMIT 1',
-      [name]
+      'SELECT id_codigo, curso FROM fichas WHERE pdf = ? AND curso = ? LIMIT 1',
+      [name, normalizedCourse]
     );
 
     if (existingFiles.length > 0) {
-      if (existingFiles[0].curso !== course) {
-        res.status(409).json({ message: 'Esta ficha ya fue subida y esta asociada a otro curso.' });
-        return;
-      }
-
       await db.query(
         `UPDATE fichas
          SET data = ?, tipo = ?, fecha_actualizacion = ?, historial = ?
@@ -947,14 +1219,16 @@ app.post('/api/app/archivos', async (req, res) => {
           historial
         )
         VALUES (?, '00000000-0', 'SINCAR', 'SINDIAG', ?, ?, ?, ?, ?, ?)`,
-        [createCode('FI'), date, name, data, type, course, JSON.stringify(history || [])]
+        [createCode('FI'), date, name, data, type, normalizedCourse, JSON.stringify(history || [])]
       );
-      await notifyCourseTeacherOfNewFicha(course).catch(error => {
-        console.error(`No se pudo enviar el correo para el curso "${course}":`, error.message);
-      });
+      if (hasCourseAssociation) {
+        await notifyCourseTeacherOfNewFicha(normalizedCourse).catch(error => {
+          console.error(`No se pudo enviar el correo para el curso "${normalizedCourse}":`, error.message);
+        });
+      }
     }
 
-    res.status(201).json({ name, data, type, course, date, history: history || [] });
+    res.status(201).json({ name, data, type, course: normalizedCourse, date, history: history || [] });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -964,26 +1238,30 @@ app.put('/api/app/archivos/:name/:course', async (req, res) => {
   const { name, course, date, history } = req.body;
   const currentName = req.params.name;
   const currentCourse = req.params.course;
+  const normalizedCourse = String(course || '').trim() || 'Sin curso';
+  const hasCourseAssociation = normalizedCourse.toLowerCase() !== 'sin curso';
 
-  if (!name || !course || !date) {
+  if (!name || !date) {
     res.status(400).json({ message: 'Faltan datos obligatorios del archivo.' });
     return;
   }
 
   try {
-    await ensureCourse(course);
+    if (hasCourseAssociation) {
+      await ensureCourse(normalizedCourse);
+    }
     await db.query(
       `UPDATE fichas
        SET pdf = ?, curso = ?, fecha_actualizacion = ?, historial = ?
        WHERE pdf = ? AND curso = ?`,
-      [name, course, date, JSON.stringify(history || []), currentName, currentCourse]
+      [name, normalizedCourse, date, JSON.stringify(history || []), currentName, currentCourse]
     );
-    if (course !== currentCourse) {
-      await notifyCourseTeacherOfNewFicha(course).catch(error => {
-        console.error(`No se pudo enviar el correo para el curso "${course}":`, error.message);
+    if (hasCourseAssociation && normalizedCourse !== currentCourse) {
+      await notifyCourseTeacherOfNewFicha(normalizedCourse).catch(error => {
+        console.error(`No se pudo enviar el correo para el curso "${normalizedCourse}":`, error.message);
       });
     }
-    res.json({ name, course, date, history: history || [] });
+    res.json({ name, course: normalizedCourse, date, history: history || [] });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { environment } from '../environments/environment';
 
 // Representa una ficha PDF persistida localmente y en la API.
 export interface UploadedFile {
@@ -27,7 +28,7 @@ export type SaveFileResult = 'created' | 'replaced' | 'skipped';
 export class FileServiceService {
   // Las fichas se mantienen en localStorage como respaldo y se sincronizan con la API.
   private storageKey = 'uploadedFiles';
-  private apiUrl = 'http://localhost:3000/api/app/archivos';
+  private apiUrl = `${environment.apiUrl}/app/archivos`;
   private removedExampleFileNames = new Set([
     'ejemplo fop caso baja vision.pdf',
     'ejemplo fop caso tdah.pdf',
@@ -58,9 +59,9 @@ export class FileServiceService {
         try {
           const files = this.getFiles();
           const normalizedCourse = course.trim() || 'Sin curso';
-          // Una ficha solo puede guardarse una vez, aunque se intente asociarla a otro curso.
+          // Una ficha puede asociarse a varios cursos, pero no repetirse en el mismo curso.
           const existingFileIndex = files.findIndex(item =>
-            this.normalizeFileNameKey(item.name) === this.normalizeFileNameKey(file.name)
+            this.getFileCourseKey(item.name, item.course || 'Sin curso') === this.getFileCourseKey(file.name, normalizedCourse)
           );
           const savedFile: UploadedFile = {
             name: file.name,
@@ -206,8 +207,7 @@ export class FileServiceService {
   private removeDuplicateFiles(files: UploadedFile[]) {
     const seenKeys = new Set<string>();
     return files.filter(file => {
-      // El nombre identifica la ficha aunque una copia heredada tenga otro curso.
-      const fileKey = this.normalizeFileNameKey(file.name);
+      const fileKey = this.getFileCourseKey(file.name, file.course || 'Sin curso');
 
       if (seenKeys.has(fileKey)) {
         return false;
@@ -225,6 +225,10 @@ export class FileServiceService {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/\s+/g, ' ');
+  }
+
+  private getFileCourseKey(fileName: string, courseName: string): string {
+    return `${this.normalizeFileNameKey(fileName)}|${this.normalizeCourseKey(courseName || 'Sin curso')}`;
   }
 
   private normalizeCourseKey(courseName: string): string {

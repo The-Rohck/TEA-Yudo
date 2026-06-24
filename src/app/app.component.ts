@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { InactivityService } from './inactivity.service';
 
 // Componente raiz: solo aloja el router para renderizar cada pantalla de la app.
 @Component({
@@ -9,4 +10,10 @@ import { RouterOutlet } from '@angular/router';
   templateUrl: './app.component.html',
   styleUrl: './app.component.css'
 })
-export class AppComponent {}
+export class AppComponent implements OnInit {
+  constructor(private inactivityService: InactivityService) {}
+
+  ngOnInit(): void {
+    this.inactivityService.start();
+  }
+}

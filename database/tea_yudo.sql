@@ -269,7 +269,8 @@ CREATE TABLE `usuarios` (
 INSERT INTO `usuarios` (`rut`, `tipo_usuario`, `contrasena`, `nombre`, `mail`, `invitacion_confirmada`) VALUES
 ('11.927.440-3', 2, '123456', 'Patricia Elena Muñoz Cárdenas', 'patricia.munoz.cardenas@gmail.com', 0),
 ('12.684.593-7', 2, '123456', 'Marcelo Andrés Fuentes Riquelme', 'marcelo.fuentes.riquelme@gmail.com', 0),
-('DOC6udbdnw', 2, '', 'Katia Sandoval Rodriguez', 'katia.sandoval@pucv.cl', 0);
+('DOC6udbdnw', 2, '', 'Katia Sandoval Rodriguez', 'katia.sandoval@pucv.cl', 0),
+('ADMIN2', 1, '123456', 'Administrador Secundario', 'admin@teayudo.local', 1);
 
 -- --------------------------------------------------------
 

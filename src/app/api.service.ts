@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
+import { environment } from '../environments/environment';
 
 // Contratos usados por el frontend para tipar las respuestas del backend.
 export interface Carrera {
@@ -62,6 +63,14 @@ export interface ConfirmedTeacher extends TeacherInvitation {
   role: 'docente';
 }
 
+export interface AuthenticatedUser {
+  username: string;
+  rut: string;
+  fullName: string;
+  role: 'administrador' | 'docente';
+  token: string;
+}
+
 export interface AppCourse {
   idCodigo?: string;
   nombre: string;
@@ -88,7 +97,7 @@ export interface EmailNotification {
 })
 export class ApiService {
   // Punto unico de configuracion para todas las llamadas HTTP del frontend.
-  private readonly apiUrl = 'http://localhost:3000/api';
+  private readonly apiUrl = environment.apiUrl;
 
   constructor(private http: HttpClient) {}
 
@@ -135,6 +144,25 @@ export class ApiService {
     return this.http.post<ConfirmedTeacher>(
       `${this.apiUrl}/app/profesores/confirmar-invitacion`,
       { token, password }
+    );
+  }
+
+  login(username: string, password: string): Observable<AuthenticatedUser> {
+    return this.http.post<AuthenticatedUser>(
+      `${this.apiUrl}/app/auth/login`,
+      { username, password }
+    );
+  }
+
+  updateProfile(
+    currentUsername: string,
+    rut: string | undefined,
+    username: string,
+    password: string
+  ): Observable<AuthenticatedUser> {
+    return this.http.put<AuthenticatedUser>(
+      `${this.apiUrl}/app/auth/profile`,
+      { currentUsername, rut, username, password }
     );
   }
 

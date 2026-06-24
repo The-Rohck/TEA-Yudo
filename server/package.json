@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",
-    "dev:watch": "node --watch src/server.js"
+    "dev:watch": "node --watch src/server.js",
+    "migrate:app": "node scripts/migrar-app-tablas.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

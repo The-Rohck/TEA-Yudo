@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
+import { AuthService } from '../auth.service';
 
 // Pantalla intermedia que muestra acciones disponibles segun el rol del usuario.
 @Component({
@@ -11,10 +12,9 @@ import { RouterModule } from '@angular/router';
   styleUrl: './acciones.component.css'
 })
 export class AccionesComponent {
-  // Por ahora el rol queda fijo en tutora; la vista de fichas aplica permisos reales.
-  userRole: 'Tutora' | 'Profesor' = 'Tutora';
+  constructor(private authService: AuthService) {}
 
   get canLoadFicha(): boolean {
-    return this.userRole === 'Tutora';
+    return this.authService.hasRole('administrador');
   }
 }

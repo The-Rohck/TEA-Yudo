@@ -1,7 +1,12 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
+
+import { ApiService } from '../api.service';
+import { AuthService } from '../auth.service';
 
 // Maneja el inicio de sesion local para administradores y docentes registrados.
 @Component({
@@ -14,58 +19,51 @@ import { Router, RouterModule } from '@angular/router';
 export class InicioSesionComponent {
   isLoggingIn = false;
   loginError = '';
-  private usersStorageKey = 'appUsers';
-
-  // Usuarios base para pruebas locales; los docentes invitados se agregan en localStorage.
-  private defaultUsers = [
-    { username: 'tutora', password: '123456', role: 'administrador' },
-    { username: 'docente', password: '123456', role: 'docente' }
-  ];
-
   loginForm = this.fb.group({
     username: ['', [Validators.required]],
     password: ['', [Validators.required, Validators.minLength(6)]]
   });
 
-  constructor(private fb: FormBuilder, private router: Router) {}
+  constructor(
+    private fb: FormBuilder,
+    private router: Router,
+    private apiService: ApiService,
+    private authService: AuthService
+  ) {}
 
-  private getUsers() {
-    const storedUsers = localStorage.getItem(this.usersStorageKey);
-    const customUsers = storedUsers ? JSON.parse(storedUsers) : [];
-    const usersByName = new Map(this.defaultUsers.map(user => [user.username, user]));
-
-    for (const user of customUsers) {
-      usersByName.set(user.username.trim().toLowerCase(), {
-        ...user,
-        username: user.username.trim().toLowerCase()
-      });
+  async iniciarSesion() {
+    if (this.loginForm.invalid) {
+      this.loginForm.markAllAsTouched();
+      return;
     }
 
-    return Array.from(usersByName.values());
+    const username = this.loginForm.value.username?.trim().toLowerCase() || '';
+    const password = this.loginForm.value.password || '';
+    this.loginError = '';
+    this.isLoggingIn = true;
+
+    try {
+      const authenticatedUser = await firstValueFrom(this.apiService.login(username, password));
+      this.authService.setSession({
+        username: authenticatedUser.username,
+        role: authenticatedUser.role,
+        rut: authenticatedUser.rut,
+        fullName: authenticatedUser.fullName
+      }, authenticatedUser.token);
+      setTimeout(() => {
+        this.router.navigate(['/view']);
+      }, 800);
+    } catch (error) {
+      this.isLoggingIn = false;
+      this.loginError = this.getErrorMessage(error, 'Usuario o contrasena incorrectos.');
+    }
   }
 
-  iniciarSesion() {
-    if (this.loginForm.valid) {
-      const username = this.loginForm.value.username?.trim().toLowerCase();
-      const password = this.loginForm.value.password;
-      const user = this.getUsers().find(item => item.username === username && item.password === password);
-
-      if (user) {
-        localStorage.setItem('currentUser', JSON.stringify({
-          username: user.username,
-          role: user.role
-        }));
-
-        this.loginError = '';
-        this.isLoggingIn = true;
-        setTimeout(() => {
-          this.router.navigate(['/view']);
-        }, 800);
-      } else {
-        this.loginError = 'Usuario o contrasena incorrectos.';
-      }
-    } else {
-      this.loginForm.markAllAsTouched();
+  private getErrorMessage(error: unknown, fallback: string): string {
+    if (error instanceof HttpErrorResponse && error.status !== 401 && error.error?.message) {
+      return error.error.message;
     }
+
+    return fallback;
   }
 }
